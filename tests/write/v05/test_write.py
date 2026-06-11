@@ -849,20 +849,40 @@ def test_labels_builder_duplicate_handling(
 
 
 @pytest.mark.parametrize("writer", WRITERS)
-def test_write_image_extra_attributes(tmp_path: Path, writer: ZarrWriter) -> None:
+@pytest.mark.parametrize("reader", ["yaozarrs", "zarr"], ids=["yaozarrs", "zarr"])
+def test_write_image_extra_attributes(
+    tmp_path: Path, writer: ZarrWriter, reader: str
+) -> None:
     """Test that extra_attributes are written alongside ome in zarr.json."""
     dest = tmp_path / "extra_attrs.zarr"
     image = _make_image("test", {"y": 0.5, "x": 0.5})
     data = np.zeros((64, 64), dtype="uint16")
-    extra = {"ist_metadata": {"affine_transform": [1, 0, 0, 1]}, "custom_key": 42}
+    ist_metadata = {"affine_transform": [1, 0, 0, 1]}
+    extra = {
+        "ist_metadata": ist_metadata,
+        "custom_key": 42,
+        "ome": {"should_not": "overwrite"},
+    }
 
     write_image(dest, image, data, extra_attributes=extra, writer=writer)
 
     zarr_json = json.loads((dest / "zarr.json").read_bytes())
     attrs = zarr_json["attributes"]
+    assert "extra_attributes" not in zarr_json
     assert "ome" in attrs
-    assert attrs["ist_metadata"] == {"affine_transform": [1, 0, 0, 1]}
+    assert "should_not" not in attrs["ome"]
+    assert attrs["ist_metadata"] == ist_metadata
     assert attrs["custom_key"] == 42
+
+    if reader == "yaozarrs":
+        group = yaozarrs.open_group(dest)
+        assert group.attrs["ist_metadata"] == ist_metadata
+    else:
+        import zarr
+
+        zarr_group = zarr.open_group(str(dest), mode="r")
+        assert zarr_group.attrs["ist_metadata"] == ist_metadata
+
     yaozarrs.validate_zarr_store(dest)
 
 
@@ -942,7 +962,7 @@ def test_write_plate_extra_attributes(tmp_path: Path, writer: ZarrWriter) -> Non
     """Test that extra_attributes work with write_plate."""
     dest = tmp_path / "plate_extra.zarr"
     plate, images = _make_plate(n_rows=1, n_cols=1)
-    extra = {"experiment": "spatial_transcriptomics"}
+    extra = {"experiment": "spatial_transcriptomics", "ome": {"bad": True}}
 
     write_plate(
         dest,
@@ -954,7 +974,8 @@ def test_write_plate_extra_attributes(tmp_path: Path, writer: ZarrWriter) -> Non
 
     zarr_json = json.loads((dest / "zarr.json").read_bytes())
     assert zarr_json["attributes"]["experiment"] == "spatial_transcriptomics"
-    assert "ome" in zarr_json["attributes"]
+    assert "plate" in zarr_json["attributes"]["ome"]
+    assert "bad" not in zarr_json["attributes"]["ome"]
 
 
 # =============================================================================

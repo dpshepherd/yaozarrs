@@ -1634,8 +1634,8 @@ class PlateBuilder:
             "zarr_format": 3,
             "node_type": "group",
             "attributes": {
-                "ome": plate.model_dump(mode="json", exclude_none=True),
                 **(self._extra_attributes or {}),
+                "ome": plate.model_dump(mode="json", exclude_none=True),
             },
         }
         (self._dest / "zarr.json").write_text(json.dumps(zarr_json, indent=2))
@@ -2300,11 +2300,9 @@ def _create_zarr3_group(
         "node_type": "group",
     }
     if ome_model is not None or extra_attributes:
-        attrs: dict[str, Any] = {}
+        attrs: dict[str, Any] = dict(extra_attributes or {})
         if ome_model is not None:
             attrs["ome"] = ome_model.model_dump(mode="json", exclude_none=True)
-        if extra_attributes:
-            attrs.update(extra_attributes)
         zarr_json["attributes"] = attrs
     zarr_json_path.write_text(json.dumps(zarr_json, indent=indent))
 
@@ -2326,9 +2324,9 @@ def _update_zarr3_group(
     # Preserve existing extra attributes (non-ome keys)
     existing_attrs = zarr_json.get("attributes", {})
     attrs: dict[str, Any] = {k: v for k, v in existing_attrs.items() if k != "ome"}
-    attrs["ome"] = ome_model.model_dump(mode="json", exclude_none=True)
     if extra_attributes:
         attrs.update(extra_attributes)
+    attrs["ome"] = ome_model.model_dump(mode="json", exclude_none=True)
     zarr_json["attributes"] = attrs
     zarr_json_path.write_text(json.dumps(zarr_json, indent=indent))
 
